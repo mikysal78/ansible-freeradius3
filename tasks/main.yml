@@ -1,0 +1,37 @@
+---
+# tasks file for freeradius
+- name: Install FreeRADIUS package
+  apt:
+    name: freeradius
+    update_cache: yes
+  tags:
+    - freeradius
+- name: Make sure psycopg2 is installed
+  pip:
+    name: psycopg2
+    state: present
+- name: Ensure FreeRADIUS service is started and enabled on boot
+  service:
+    name: freeradius
+    state: started
+    enabled: yes
+  tags:
+    - freeradius
+- name: Create radiusd configuration file
+  template:
+    src: radiusd.conf.j2
+    dest: "{{ freeradius_config}}/radiusd.conf"
+    owner: root
+    group: freerad
+    mode: 0640
+  notify:
+          - restart freeradius
+  tags:
+    - freeradius
+########## Config for OpenWisp2
+- name: Include task OpenWisp2
+  include: openwisp.yml
+  when: freeradius_openwisp | bool
+  tags:
+    - freeradius
+    - openwisp2

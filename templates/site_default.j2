@@ -1,0 +1,32 @@
+# /etc/freeradius/sites-enabled/default
+# Remove `#` symbol from the line to uncomment it
+
+server default {
+    authorize {
+        rest
+        sql
+        dailycounter
+        noresetcounter
+        dailybandwidthcounter
+    }
+
+    authenticate {}
+
+    post-auth {
+        # if you are not using Radius Token authentication method, please uncomment the following
+        # update control { &REST-HTTP-Header += "${...api_token_header}" }
+        rest
+
+        Post-Auth-Type REJECT {
+            # if you are not using Radius Token authentication method, please uncomment the following
+            # update control { &REST-HTTP-Header += "${....api_token_header}" }
+            rest
+        }
+    }
+
+    accounting {
+        # if you are not using Radius Token authentication method, please uncomment the following
+        # update control { &REST-HTTP-Header += "${...api_token_header}" }
+        rest
+    }
+}

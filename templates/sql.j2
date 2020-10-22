@@ -1,0 +1,70 @@
+# mods-available sql
+
+sql {
+	driver = "rlm_sql_{{ freeradius_db }}"
+	dialect = "{{ freeradius_db}}"
+
+#	Driver specific options are:
+{% if freeradius_db == "sqlite" %}
+	sqlite {
+		filename = "/tmp/freeradius.db"
+		busy_timeout = 200
+		bootstrap = "${modconfdir}/${..:name}/main/sqlite/schema.sql"
+ 	}
+{% endif %}
+
+{% if freeradius_db == "mysql" %}
+	mysql {
+		tls {
+			ca_file = "/etc/ssl/certs/my_ca.crt"
+			ca_path = "/etc/ssl/certs/"
+			certificate_file = "/etc/ssl/certs/private/client.crt"
+			private_key_file = "/etc/ssl/certs/private/client.key"
+			cipher = "DHE-RSA-AES256-SHA:AES128-SHA"
+		}
+		warnings = auto
+	}
+{% endif %}
+
+{% if freeradius_db == "postgresql" %}
+	postgresql {
+		send_application_name = yes
+	}
+{% endif %}
+
+{% if (freeradius_db == "postgresql" or freeradius_db == "mysql") %}
+	# Connection info:
+        server = "{{ conn_host }}"
+        port = "{{ conn_port }}"
+        login = "{{ conn_login}}"
+        password = "{{ conn_password}}"
+        radius_db = "{{ conn_db }}"
+#        radius_db = "dbname={{ conn_db }} host={{ conn_host }} user={{ conn_login }} password={{ conn_password }}"
+{% endif %}
+
+	acct_table1 = "radacct"
+	acct_table2 = "radacct"
+
+	postauth_table = "radpostauth"
+	authcheck_table = "radcheck"
+	groupcheck_table = "radgroupcheck"
+	authreply_table = "radreply"
+	groupreply_table = "radgroupreply"
+	usergroup_table = "radusergroup"
+	delete_stale_sessions = yes
+
+	pool {
+		start = ${thread[pool].start_servers}
+		min = ${thread[pool].min_spare_servers}
+		max = ${thread[pool].max_servers}
+		spare = ${thread[pool].max_spare_servers}
+		uses = 0
+		retry_delay = 30
+		lifetime = 0
+		idle_timeout = 60
+	}
+	# Table to keep radius client info
+	client_table = "nas"
+	group_attribute = "SQL-Group"
+	$INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

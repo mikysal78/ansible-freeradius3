@@ -1,0 +1,94 @@
+- name: Update repositories cache and install "freeradius-rest" package
+  apt:
+    name: freeradius-rest
+    update_cache: yes
+  tags:
+    - freeradius
+    - openwisp2
+- name: "Update repositories cache and install freeradius-{{ freeradius_db }} package"
+  apt:
+    name: "freeradius-{{ freeradius_db }}"
+    update_cache: yes
+  tags:
+    - freeradius
+    - openwisp2
+
+# Symbolic Link
+- name: Create symbolic link sql 
+  file:
+   src: "{{ freeradius_config}}/mods-available/sql"
+   dest: "{{ freeradius_config}}/mods-enabled/sql"
+   state: link
+- name: Create symbolic link rest
+  file:
+   src: "{{ freeradius_config}}/mods-available/rest"
+   dest: "{{ freeradius_config}}/mods-enabled/rest"
+   state: link
+- name: Create symbolic link sqlcounter
+  file:
+   src: "{{ freeradius_config}}/mods-available/sqlcounter"
+   dest: "{{ freeradius_config}}/mods-enabled/sqlcounter"
+   state: link
+# Connessione DB
+- name: Create the "{{ conn_db }}" db
+  postgresql_db:
+    name: "{{ conn_db }}"
+    owner: "{{ conn_login }}"
+    template: template0
+    encoding: UTF8
+  become_user: postgres
+  tags:
+    - freeradius
+    - openwisp2
+- name: Modulo di connessione al database
+  template:
+    src: sql.j2
+    dest: "{{ freeradius_config}}/mods-available/sql"
+    owner: root
+    group: freerad
+    mode: 0640
+  tags:
+    - freeradius
+    - openwisp2
+- name: Create sqlcounter configuration file
+  template:
+    src: sqlcounter.j2
+    dest: "{{ freeradius_config}}/mods-available/sqlcounter"
+    owner: root
+    group: freerad
+    mode: 0640
+  tags:
+    - freeradius
+    - openwisp2
+- name: Modulo rest
+  template:
+    src: rest.j2
+    dest: "{{ freeradius_config}}/mods-available/rest"
+    owner: root
+    group: freerad
+    mode: 0640
+  tags:
+    - freeradius
+    - openwisp2
+- name: Config Default Site
+  template:
+    src: site_default.j2
+    dest: "{{ freeradius_config}}/sites-available/default"
+    owner: root
+    group: freerad
+    mode: 0640
+  tags:
+    - freeradius
+    - openwisp2
+- name: Config Query MySQL
+  template:
+    src: queries.conf.j2
+    dest: "{{ freeradius_config}}/mods-config/sql/main/mysql/queries.conf"
+    owner: root
+    group: freerad
+    mode: 0640
+  when: freeradius_db == "mysql"
+  tags:
+    - freeradius
+    - openwisp2
+    - mysql

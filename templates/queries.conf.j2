@@ -1,0 +1,255 @@
+#######################################################################
+#  Connection config
+#######################################################################
+# The character set is not configurable. The default character set of
+# the mysql client library is used. To control the character set,
+# create/edit my.cnf (typically in /etc/mysql/my.cnf or /etc/my.cnf)
+# and enter
+# [client]
+# default-character-set = utf8
+#
+
+#######################################################################
+#  Query config:  Username
+#######################################################################
+sql_user_name = "%{User-Name}"
+
+#######################################################################
+# NAS Query
+#######################################################################
+client_query = "\
+	SELECT id, nasname, shortname, type, secret, server \
+	FROM ${client_table}"
+
+#######################################################################
+# Authorization Queries
+#######################################################################
+authorize_check_query = "\
+         SELECT id, username, attribute, value, op \
+         FROM ${authcheck_table} \
+         WHERE username = '%{SQL-User-Name}' \
+         AND is_active = TRUE \
+         AND valid_until >= CURDATE() \
+         ORDER BY id"
+
+authorize_reply_query = "\
+	SELECT id, username, attribute, value, op \
+	FROM ${authreply_table} \
+	WHERE username = '%{SQL-User-Name}' \
+	ORDER BY id"
+
+group_membership_query = "\
+	SELECT groupname \
+	FROM ${usergroup_table} \
+	WHERE username = '%{SQL-User-Name}' \
+	ORDER BY priority"
+
+authorize_group_check_query = "\
+	SELECT id, groupname, attribute, \
+	Value, op \
+	FROM ${groupcheck_table} \
+	WHERE groupname = '%{${group_attribute}}' \
+	ORDER BY id"
+
+authorize_group_reply_query = "\
+	SELECT id, groupname, attribute, \
+	value, op \
+	FROM ${groupreply_table} \
+	WHERE groupname = '%{${group_attribute}}' \
+	ORDER BY id"
+
+#######################################################################
+# Simultaneous Use Checking Queries
+#######################################################################
+simul_count_query = "\
+	SELECT COUNT(*) \
+	FROM ${acct_table1} \
+	WHERE username = '%{SQL-User-Name}' \
+	AND acctstoptime IS NULL"
+
+simul_verify_query = "\
+	SELECT \
+		radacctid, acctsessionid, username, nasipaddress, nasportid, framedipaddress, \
+		callingstationid, framedprotocol \
+	FROM ${acct_table1} \
+	WHERE username = '%{SQL-User-Name}' \
+	AND acctstoptime IS NULL"
+
+#######################################################################
+# Accounting and Post-Auth Queries
+#######################################################################
+accounting {
+	reference = "%{tolower:type.%{Acct-Status-Type}.query}"
+
+	column_list = "\
+		acctsessionid,		acctuniqueid,		username, \
+		realm,			nasipaddress,		nasportid, \
+		nasporttype,		acctstarttime,		acctupdatetime, \
+		acctstoptime,		acctsessiontime, 	acctauthentic, \
+		connectinfo_start,	connectinfo_stop, 	acctinputoctets, \
+		acctoutputoctets,	calledstationid, 	callingstationid, \
+		acctterminatecause,	servicetype,		framedprotocol, \
+		framedipaddress"
+
+	type {
+		accounting-on {
+			query = "\
+				UPDATE ${....acct_table1} \
+				SET \
+					acctstoptime = FROM_UNIXTIME(\
+						%{integer:Event-Timestamp}), \
+					acctsessiontime	= '%{integer:Event-Timestamp}' \
+						- UNIX_TIMESTAMP(acctstarttime), \
+					acctterminatecause = '%{%{Acct-Terminate-Cause}:-NAS-Reboot}' \
+				WHERE acctstoptime IS NULL \
+				AND nasipaddress   = '%{NAS-IP-Address}' \
+				AND acctstarttime <= FROM_UNIXTIME(\
+					%{integer:Event-Timestamp})"
+		}
+
+		accounting-off {
+			query = "${..accounting-on.query}"
+		}
+
+		start {
+			query = "\
+				INSERT INTO ${....acct_table1} \
+					(${...column_list}) \
+				VALUES \
+					('%{Acct-Session-Id}', \
+					'%{Acct-Unique-Session-Id}', \
+					'%{SQL-User-Name}', \
+					'%{Realm}', \
+					'%{NAS-IP-Address}', \
+					'%{%{NAS-Port-ID}:-%{NAS-Port}}', \
+					'%{NAS-Port-Type}', \
+					FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					NULL, \
+					'0', \
+					'%{Acct-Authentic}', \
+					'%{Connect-Info}', \
+					'', \
+					'0', \
+					'0', \
+					'%{Called-Station-Id}', \
+					'%{Calling-Station-Id}', \
+					'', \
+					'%{Service-Type}', \
+					'%{Framed-Protocol}', \
+					'%{Framed-IP-Address}')"
+
+			query = "\
+				UPDATE ${....acct_table1} SET \
+					acctstarttime	= FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					acctupdatetime	= FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					connectinfo_start = '%{Connect-Info}' \
+				WHERE AcctUniqueId = '%{Acct-Unique-Session-Id}'"
+		}
+
+		interim-update {
+			query = "\
+				UPDATE ${....acct_table1} \
+				SET \
+					acctupdatetime  = (@acctupdatetime_old:=acctupdatetime), \
+					acctupdatetime  = FROM_UNIXTIME(\
+						%{integer:Event-Timestamp}), \
+					acctinterval    = %{integer:Event-Timestamp} - \
+						UNIX_TIMESTAMP(@acctupdatetime_old), \
+					framedipaddress = '%{Framed-IP-Address}', \
+					acctsessiontime = %{%{Acct-Session-Time}:-NULL}, \
+					acctinputoctets = '%{%{Acct-Input-Gigawords}:-0}' \
+						<< 32 | '%{%{Acct-Input-Octets}:-0}', \
+					acctoutputoctets = '%{%{Acct-Output-Gigawords}:-0}' \
+						<< 32 | '%{%{Acct-Output-Octets}:-0}' \
+				WHERE AcctUniqueId = '%{Acct-Unique-Session-Id}'"
+
+			query = "\
+				INSERT INTO ${....acct_table1} \
+					(${...column_list}) \
+				VALUES \
+					('%{Acct-Session-Id}', \
+					'%{Acct-Unique-Session-Id}', \
+					'%{SQL-User-Name}', \
+					'%{Realm}', \
+					'%{NAS-IP-Address}', \
+					'%{%{NAS-Port-ID}:-%{NAS-Port}}', \
+					'%{NAS-Port-Type}', \
+					FROM_UNIXTIME(%{integer:Event-Timestamp} - %{%{Acct-Session-Time}:-0}), \
+					FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					NULL, \
+					%{%{Acct-Session-Time}:-NULL}, \
+					'%{Acct-Authentic}', \
+					'%{Connect-Info}', \
+					'', \
+					'%{%{Acct-Input-Gigawords}:-0}' << 32 | '%{%{Acct-Input-Octets}:-0}', \
+					'%{%{Acct-Output-Gigawords}:-0}' << 32 | '%{%{Acct-Output-Octets}:-0}', \
+					'%{Called-Station-Id}', \
+					'%{Calling-Station-Id}', \
+					'', \
+					'%{Service-Type}', \
+					'%{Framed-Protocol}', \
+					'%{Framed-IP-Address}')"
+		}
+
+		stop {
+			query = "\
+				UPDATE ${....acct_table2} SET \
+					acctstoptime	= FROM_UNIXTIME(\
+						%{integer:Event-Timestamp}), \
+					acctsessiontime	= %{%{Acct-Session-Time}:-NULL}, \
+					acctinputoctets	= '%{%{Acct-Input-Gigawords}:-0}' \
+						<< 32 | '%{%{Acct-Input-Octets}:-0}', \
+					acctoutputoctets = '%{%{Acct-Output-Gigawords}:-0}' \
+						<< 32 | '%{%{Acct-Output-Octets}:-0}', \
+					acctterminatecause = '%{Acct-Terminate-Cause}', \
+					connectinfo_stop = '%{Connect-Info}' \
+				WHERE AcctUniqueId = '%{Acct-Unique-Session-Id}'"
+
+			query = "\
+				INSERT INTO ${....acct_table2} \
+					(${...column_list}) \
+				VALUES \
+					('%{Acct-Session-Id}', \
+					'%{Acct-Unique-Session-Id}', \
+					'%{SQL-User-Name}', \
+					'%{Realm}', \
+					'%{NAS-IP-Address}', \
+					'%{%{NAS-Port-ID}:-%{NAS-Port}}', \
+					'%{NAS-Port-Type}', \
+					FROM_UNIXTIME(%{integer:Event-Timestamp} - %{%{Acct-Session-Time}:-0}), \
+					FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					FROM_UNIXTIME(%{integer:Event-Timestamp}), \
+					%{%{Acct-Session-Time}:-NULL}, \
+					'%{Acct-Authentic}', \
+					'', \
+					'%{Connect-Info}', \
+					'%{%{Acct-Input-Gigawords}:-0}' << 32 | '%{%{Acct-Input-Octets}:-0}', \
+					'%{%{Acct-Output-Gigawords}:-0}' << 32 | '%{%{Acct-Output-Octets}:-0}', \
+					'%{Called-Station-Id}', \
+					'%{Calling-Station-Id}', \
+					'%{Acct-Terminate-Cause}', \
+					'%{Service-Type}', \
+					'%{Framed-Protocol}', \
+					'%{Framed-IP-Address}')"
+		}
+	}
+}
+
+
+#######################################################################
+# Authentication Logging Queries
+#######################################################################
+# postauth_query	- Insert some info after authentication
+#######################################################################
+
+post-auth {
+	query =	"\
+		INSERT INTO ${..postauth_table} \
+			(username, pass, reply, authdate) \
+		VALUES ( \
+			'%{SQL-User-Name}', \
+			'%{%{User-Password}:-%{Chap-Password}}', \
+			'%{reply:Packet-Type}', \
+			'%S')"
+}

@@ -1,0 +1,14 @@
+---
+# handlers file for freeradius
+- name: Restart freeradius service
+  systemd:
+    name: freeradius
+    daemon_reload: yes
+    state: restarted
+
+- name: Reload freeradius service
+  systemd:
+    name: freeradius
+    daemon_reload: yes
+    state: reloaded
+

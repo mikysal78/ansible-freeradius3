@@ -1,0 +1,15 @@
+---
+# defaults file for freeradius
+freeradius_config: /etc/freeradius/3.0
+freeradius_db: sqlite    # postgresql/mysql/sqlite
+freeradius_rest_conn_uri: http://127.0.0.1   #prod http://mydomain.com
+freeradius_openwisp: false
+
+#Connessione DB SQL
+conn_host: localhost
+conn_port: 5432              #5432 for pgsql and 3306 for mysql
+conn_login: openwisp2
+conn_password: CaMbIaMi
+conn_db: radius
+
+
